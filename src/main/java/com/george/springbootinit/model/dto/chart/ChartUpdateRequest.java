@@ -54,6 +54,11 @@ public class ChartUpdateRequest implements Serializable {
     private Long userId;
 
     /**
+     * 图表名称
+     */
+    private String name;
+
+    /**
      * 创建时间
      */
     private Date createTime;

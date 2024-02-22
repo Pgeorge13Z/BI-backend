@@ -1,12 +1,8 @@
 package com.george.springbootinit.model.dto.chart;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.util.Date;
-import java.util.List;
 
 /**
  * 创建请求
@@ -15,7 +11,8 @@ import java.util.List;
 
  */
 @Data
-public class ChartAddRequest implements Serializable {
+public class GenChartByAIRequest implements Serializable {
+
     /**
      * 图表名称
      */
@@ -27,14 +24,10 @@ public class ChartAddRequest implements Serializable {
     private String goal;
 
     /**
-     * 图表数据
-     */
-    private String chartData;
-
-    /**
      * 图表类型
      */
     private String chartType;
+
 
 
     private static final long serialVersionUID = 1L;
