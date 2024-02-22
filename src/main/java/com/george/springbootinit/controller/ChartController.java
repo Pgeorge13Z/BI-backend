@@ -16,6 +16,7 @@ import com.george.springbootinit.constant.UserConstant;
 import com.george.springbootinit.exception.BusinessException;
 import com.george.springbootinit.exception.ThrowUtils;
 import com.george.springbootinit.manager.AiManager;
+import com.george.springbootinit.manager.RedisLimiterManager;
 import com.george.springbootinit.model.dto.chart.*;
 import com.george.springbootinit.model.dto.file.UploadFileRequest;
 import com.george.springbootinit.model.dto.post.PostQueryRequest;
@@ -58,6 +59,10 @@ public class ChartController {
 
     @Resource
     private AiManager aiManager;
+
+    @Resource
+    private RedisLimiterManager redisLimiterManager;
+
     // region 增删改查
 
     /**
@@ -307,8 +312,10 @@ public class ChartController {
         //获取登录用户，存入数据库的时候需要知道用户id
         User loginUser = userService.getLoginUser(request);
 
-        //AI模型的ID
-        long biModelId = 1659171950288818178L;
+        //限流判断
+        redisLimiterManager.doRateLimit("genChartByAI"+loginUser.getId());
+
+
 
         /** 预设的用户的输入样式(参考)
          分析需求：
@@ -336,7 +343,11 @@ public class ChartController {
         userInput.append(csvResult).append("\n");
 
         //AI处理，拿到返回结果
-        String aiResult = aiManager.doChat(biModelId, userInput.toString());
+        //AI模型的ID
+//        long biModelId = 1659171950288818178L;
+        //String aiResult = aiManager.doChat(biModelId, userInput.toString());
+        String aiResult = aiManager.doChatByXingHuo(userInput.toString());
+
         /**
           预设的输出的样式：
          【【【【【

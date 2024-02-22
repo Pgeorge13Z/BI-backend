@@ -21,6 +21,19 @@ class AiManagerTest {
     }
 
     @Test
+    void doChatByXingHuo() {
+        String message = "分析目标：分析用户增长情况\\n数据：日期,用户\\n1,100\\n2,100\\n3,200\\n\\n";
+        String resp = aiManager.doChatByXingHuo(message);
+        System.out.println(resp);
+    }
+
+    @Test
+    void chatWithXingHuo() {
+        String message = "今天西安的天气怎么样";
+        String resp = aiManager.chatWithXingHuo(message);
+    }
+
+    @Test
     void test1() {
         String result = "【【【【【\n" +
                 "         {\n" +
@@ -55,4 +68,6 @@ class AiManagerTest {
         System.out.println(splits[2].trim());
         System.out.println(splits[2]);
     }
+
+
 }
