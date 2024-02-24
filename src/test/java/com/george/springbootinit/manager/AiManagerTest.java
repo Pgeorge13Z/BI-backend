@@ -29,7 +29,7 @@ class AiManagerTest {
 
     @Test
     void chatWithXingHuo() {
-        String message = "今天西安的天气怎么样";
+        String message = "今年NBA的快船队的前景怎么样";
         String resp = aiManager.chatWithXingHuo(message);
     }
 
