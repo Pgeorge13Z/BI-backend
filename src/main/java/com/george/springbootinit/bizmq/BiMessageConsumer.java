@@ -4,10 +4,11 @@ import cn.hutool.core.io.FileUtil;
 import com.george.springbootinit.common.BaseResponse;
 import com.george.springbootinit.common.ErrorCode;
 import com.george.springbootinit.common.ResultUtils;
+import com.george.springbootinit.constant.ChartConstant;
 import com.george.springbootinit.exception.BusinessException;
 import com.george.springbootinit.exception.ThrowUtils;
 import com.george.springbootinit.manager.AiManager;
-import com.george.springbootinit.model.dto.chart.GenChartByAIRequest;
+import com.george.springbootinit.model.dto.chart.genChartByAiRequest;
 import com.george.springbootinit.model.entity.Chart;
 import com.george.springbootinit.model.entity.User;
 import com.george.springbootinit.model.vo.BiResponse;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -59,7 +61,7 @@ public class BiMessageConsumer {
     public void receiveMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {
         log.info("receiveMessage message = {}", message);
         if (StringUtils.isBlank(message)) {
-            // 如果更新失败，拒绝当前消息，让消息重新进入队列
+            // 如果更新失败，拒绝当前消息，不让消息重新进入队列
             channel.basicNack(deliveryTag, false, false);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "消息为空");
         }
@@ -85,11 +87,12 @@ public class BiMessageConsumer {
 //        long biModelId = 1659171950288818178L;
         //String aiResult = aiManager.doChat(biModelId, userInput.toString());
         String aiResult = aiManager.doChatByXingHuo(buildUserInput(chart));
-
+        
         //根据中括号拆分
-        String[] splits = aiResult.split("【【【【【");
+        String[] splits = aiResult.split(ChartConstant.GEN_CONTENT_SPLITS);
         //最前面有个空字符串 + js代码 + 分析结论
         if (splits.length < 3) {
+            channel.basicNack(deliveryTag, false, false);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "AI生成错误");
         }
 
@@ -105,9 +108,53 @@ public class BiMessageConsumer {
         //设置任务状态为成功，succeed
         updateChartResult.setStatus("succeed");
         boolean UpdateResult = chartService.updateById(updateChartResult);
-        ThrowUtils.throwIf(!UpdateResult, ErrorCode.SYSTEM_ERROR, "图表更新《成功》状态失败");
+        if (!UpdateResult) {
+            channel.basicNack(deliveryTag, false, false);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "图表更新《成功》状态失败");
+        }
     }
 
+    /**
+     * 死信队列,消费异常消息，把消息更新为failed
+     *
+     * @param message
+     * @param channel
+     * @param deliveryTag
+     */
+    @RabbitListener(queues = {BiMqConstant.BI_DLX_QUEUE_NAME}, ackMode = "MANUAL")
+    public void receiveErrorMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {
+        if (StringUtils.isBlank(message)) {
+            throwExceptionAndNackMessage(channel, deliveryTag);
+        }
+        log.info("receiveErrorMessage message = {}", message);
+        long chartId = Long.parseLong(message);
+        //把消息更新为failed
+        Chart updateChartResult = new Chart();
+        updateChartResult.setId(chartId);
+        updateChartResult.setStatus("failed");
+        boolean UpdateResult = chartService.updateById(updateChartResult);
+        ThrowUtils.throwIf(!UpdateResult,ErrorCode.SYSTEM_ERROR,"死信队列消费消息失败");
+        try {
+            channel.basicAck(deliveryTag, false);
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 抛异常同时拒绝消息
+     *
+     * @param channel
+     * @param deliveryTag
+     */
+    private void throwExceptionAndNackMessage(Channel channel, long deliveryTag) {
+        try {
+            channel.basicNack(deliveryTag, false, false);
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+        throw new BusinessException(ErrorCode.SYSTEM_ERROR);
+    }
 
     private String buildUserInput(Chart chart) {
         // 获取图表的目标、类型和数据

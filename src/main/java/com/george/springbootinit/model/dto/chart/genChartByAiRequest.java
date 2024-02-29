@@ -11,7 +11,7 @@ import java.io.Serializable;
 
  */
 @Data
-public class GenChartByAIRequest implements Serializable {
+public class genChartByAiRequest implements Serializable {
 
     /**
      * 图表名称

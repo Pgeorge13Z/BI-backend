@@ -25,6 +25,14 @@
         isDelete
     </sql>
 
+    <!--全部自定义 SQL-->
+    <update id="createTable">
+        ${creatTableSQL}
+    </update>
+    <!--插入 value-->
+    <insert id="insertValue">
+        ${insertCVSData}
+    </insert>
     <!--
     queryChartData唯一标识符;parameterType查询语句的参数类型,类型为字符串;
     resultType查询结果的返回类型,类型为map类型;
@@ -33,8 +41,9 @@
     就是把sql语句完全交给程序去传递，有一定的风险;
     一旦使用$符号，就有sql注入的风险。
     -->
-    <select id="queryChartData" parameterType="string" resultType="map">
-        ${querySql}
+    <!--查询语句-->
+    <select id="queryChartData" resultType="java.util.Map">
+        select * from charts_${tableName}
     </select>
     <!--
     可以在程序里面去做校验。只要保证这个SQL是通过你的后端生成的，
