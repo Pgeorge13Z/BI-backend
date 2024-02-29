@@ -1,29 +1,23 @@
 package com.george.springbootinit.controller;
 
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.george.springbootinit.annotation.AuthCheck;
+import com.george.springbootinit.bizmq.BiMessageProducer;
 import com.george.springbootinit.common.BaseResponse;
 import com.george.springbootinit.common.DeleteRequest;
 import com.george.springbootinit.common.ErrorCode;
 import com.george.springbootinit.common.ResultUtils;
 import com.george.springbootinit.constant.CommonConstant;
-import com.george.springbootinit.constant.FileConstant;
 import com.george.springbootinit.constant.UserConstant;
 import com.george.springbootinit.exception.BusinessException;
 import com.george.springbootinit.exception.ThrowUtils;
 import com.george.springbootinit.manager.AiManager;
 import com.george.springbootinit.manager.RedisLimiterManager;
 import com.george.springbootinit.model.dto.chart.*;
-import com.george.springbootinit.model.dto.file.UploadFileRequest;
-import com.george.springbootinit.model.dto.post.PostQueryRequest;
 import com.george.springbootinit.model.entity.Chart;
-import com.george.springbootinit.model.entity.Post;
 import com.george.springbootinit.model.entity.User;
-import com.george.springbootinit.model.enums.FileUploadBizEnum;
 import com.george.springbootinit.model.vo.BiResponse;
 import com.george.springbootinit.service.ChartService;
 import com.george.springbootinit.service.UserService;
@@ -31,16 +25,13 @@ import com.george.springbootinit.utils.ExcelUtils;
 import com.george.springbootinit.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.checkerframework.checker.units.qual.C;
 import org.springframework.beans.BeanUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -67,7 +58,10 @@ public class ChartController {
     private RedisLimiterManager redisLimiterManager;
 
     @Resource
-    ThreadPoolExecutor threadPoolExecutor;
+    private ThreadPoolExecutor threadPoolExecutor;
+
+    @Resource
+    private BiMessageProducer biMessageProducer;
 
     // region 增删改查
 
@@ -503,7 +497,7 @@ public class ChartController {
         chart.setStatus("wait");
         boolean preSaveResult = chartService.save(chart);
         if (!preSaveResult) {
-            handleChartUpdateError(chart.getId(),"图表预保存失败");
+            chartService.handleChartUpdateError(chart.getId(),"图表预保存失败");
         }
 
         // 在最终的结果返回之前提交一个任务
@@ -515,7 +509,7 @@ public class ChartController {
             updateChart.setStatus("running");
             boolean updateR = chartService.updateById(updateChart);
             if (!updateR) {
-                handleChartUpdateError(chart.getId(),"更新图表《执行中》状态失败");
+                chartService.handleChartUpdateError(chart.getId(),"更新图表《执行中》状态失败");
             }
 
             // 调用 AI
@@ -584,15 +578,99 @@ public class ChartController {
         return ResultUtils.success(biResponse);
     }
 
-    // 定义一个更新图表失败的工具类函数
-    private void handleChartUpdateError(long chartId, String execMessage) {
-        Chart updateChartResult = new Chart();
-        updateChartResult.setId(chartId);
-        updateChartResult.setStatus("failed");
-        updateChartResult.setExecMessage(execMessage);
-        boolean updateResult = chartService.updateById(updateChartResult);
-        if (!updateResult) {
-            log.error("更新图表失败状态失败"+chartId+","+execMessage);
+    /**
+     * 智能分析(异步)
+     *
+     * @param multipartFile
+     * @param genChartByAIRequest
+     * @param request
+     * @return
+     */
+    @PostMapping("/gen/async/mq")
+    public BaseResponse<BiResponse> genChartByAiAsyncMq(@RequestPart("file") MultipartFile multipartFile,
+                                                      GenChartByAIRequest genChartByAIRequest, HttpServletRequest request) {
+
+        String name = genChartByAIRequest.getName();
+        String goal = genChartByAIRequest.getGoal();
+        String chartType = genChartByAIRequest.getChartType();
+
+        //校验
+        //如果分析目标为空，就抛出异常
+        ThrowUtils.throwIf(StringUtils.isBlank(goal), ErrorCode.PARAMS_ERROR);
+        //如果名字长度大于100，抛出异常
+        ThrowUtils.throwIf(StringUtils.isNoneBlank(name) && name.length() > 100, ErrorCode.PARAMS_ERROR);
+
+        /**
+         * 检验文件
+         */
+        long size = multipartFile.getSize();
+        String originalFilename = multipartFile.getOriginalFilename();
+        //检验文件大小
+        final long ONE_MB = 1024 * 1024;
+        ThrowUtils.throwIf(size > 100 * ONE_MB,ErrorCode.PARAMS_ERROR,"文件超过100MB");
+        //检验文件后缀
+        String suffix = FileUtil.getSuffix(originalFilename);
+        //定义合法的后缀列表
+        final List<String> validFileSuffixList = Arrays.asList("xlsx","xls","csv");
+        ThrowUtils.throwIf(!validFileSuffixList.contains(suffix),ErrorCode.PARAMS_ERROR,"文件后缀非法");
+
+        //获取登录用户，存入数据库的时候需要知道用户id
+        User loginUser = userService.getLoginUser(request);
+
+        //限流判断
+        redisLimiterManager.doRateLimit("genChartByAI"+loginUser.getId());
+
+
+
+        /** 预设的用户的输入样式(参考)
+         分析需求：
+         分析网站用户的增长情况
+         原始数据：
+         日期,用户数
+         1号,10
+         2号,20
+         3号,30
+         * */
+        //构造用户输入
+        StringBuilder userInput = new StringBuilder();
+        userInput.append("分析需求：").append("\n");
+
+        //拼接分析目标
+        //如果图表类型不为空，拼接图表类型
+        if (StringUtils.isNotBlank(chartType)){
+            goal+=",请使用"+chartType;
         }
+        userInput.append(goal).append("\n");
+
+        //拼接压缩后的数据
+        userInput.append("原始数据：").append("\n");
+        String csvResult = ExcelUtils.excelToCsv(multipartFile);
+        userInput.append(csvResult).append("\n");
+
+        //先把图表保存到数据库中
+        Chart chart = new Chart();
+        chart.setName(name);
+        chart.setChartData(csvResult);
+        chart.setChartType(chartType);
+        chart.setGoal(goal);
+        chart.setUserId(loginUser.getId());
+        //设置任务状态为排队中，wait
+        chart.setStatus("wait");
+        boolean preSaveResult = chartService.save(chart);
+        if (!preSaveResult) {
+            chartService.handleChartUpdateError(chart.getId(),"图表预保存失败");
+        }
+        Long newChatId = chart.getId();
+        // 在最终结果返回前提交一个任务
+        biMessageProducer.sendMessage(String.valueOf(newChatId));
+
+        //构造返回对象
+        BiResponse biResponse = new BiResponse();
+        biResponse.setChartId(chart.getId());
+
+        return ResultUtils.success(biResponse);
     }
+
+
+
 }

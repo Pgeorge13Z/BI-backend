@@ -9,5 +9,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
 * @createDate 2024-02-19 17:23:23
 */
 public interface ChartService extends IService<Chart> {
-
+    // 定义一个更新图表失败的工具类函数
+    public void handleChartUpdateError(long chartId, String execMessage);
 }

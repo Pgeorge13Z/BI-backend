@@ -15,6 +15,17 @@ import org.springframework.stereotype.Service;
 public class ChartServiceImpl extends ServiceImpl<ChartMapper, Chart>
     implements ChartService{
 
+    @Override
+    public void handleChartUpdateError(long chartId, String execMessage) {
+        Chart updateChartResult = new Chart();
+        updateChartResult.setId(chartId);
+        updateChartResult.setStatus("failed");
+        updateChartResult.setExecMessage(execMessage);
+        boolean updateResult = this.updateById(updateChartResult);
+        if (!updateResult) {
+            log.error("更新图表失败状态失败"+chartId+","+execMessage);
+        }
+    }
 }
 
 
