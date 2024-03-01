@@ -1,41 +1,14 @@
 package com.george.springbootinit.controller;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.json.JSONUtil;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.george.springbootinit.annotation.AuthCheck;
-import com.george.springbootinit.common.BaseResponse;
-import com.george.springbootinit.common.DeleteRequest;
-import com.george.springbootinit.common.ErrorCode;
-import com.george.springbootinit.common.ResultUtils;
-import com.george.springbootinit.constant.CommonConstant;
-import com.george.springbootinit.constant.UserConstant;
-import com.george.springbootinit.exception.BusinessException;
-import com.george.springbootinit.exception.ThrowUtils;
-import com.george.springbootinit.manager.AiManager;
-import com.george.springbootinit.manager.RedisLimiterManager;
-import com.george.springbootinit.model.dto.chart.*;
-import com.george.springbootinit.model.entity.Chart;
-import com.george.springbootinit.model.entity.User;
-import com.george.springbootinit.model.vo.BiResponse;
-import com.george.springbootinit.service.ChartService;
-import com.george.springbootinit.service.UserService;
-import com.george.springbootinit.utils.ExcelUtils;
-import com.george.springbootinit.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Profile;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 

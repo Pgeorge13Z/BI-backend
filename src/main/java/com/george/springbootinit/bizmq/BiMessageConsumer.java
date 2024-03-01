@@ -1,19 +1,13 @@
 package com.george.springbootinit.bizmq;
 
-import cn.hutool.core.io.FileUtil;
-import com.george.springbootinit.common.BaseResponse;
+
 import com.george.springbootinit.common.ErrorCode;
-import com.george.springbootinit.common.ResultUtils;
 import com.george.springbootinit.constant.ChartConstant;
 import com.george.springbootinit.exception.BusinessException;
 import com.george.springbootinit.exception.ThrowUtils;
 import com.george.springbootinit.manager.AiManager;
-import com.george.springbootinit.model.dto.chart.genChartByAiRequest;
 import com.george.springbootinit.model.entity.Chart;
-import com.george.springbootinit.model.entity.User;
-import com.george.springbootinit.model.vo.BiResponse;
 import com.george.springbootinit.service.ChartService;
-import com.george.springbootinit.utils.ExcelUtils;
 import com.rabbitmq.client.Channel;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -22,15 +16,9 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestPart;
 
 import javax.annotation.Resource;
-import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 
 // 使用@Component注解标记该类为一个组件，让Spring框架能够扫描并将其纳入管理
@@ -55,7 +43,7 @@ public class BiMessageConsumer {
     // 使用@SneakyThrows注解简化异常处理
     @SneakyThrows
     // 使用@RabbitListener注解指定要监听的队列名称为"code_queue"，并设置消息的确认机制为手动确认
-    @RabbitListener(queues = {BiMqConstant.BI_QUEUE_NAME}, ackMode = "MANUAL")
+    @RabbitListener(queues = {BiMqConstant.BI_QUEUE_NAME}, ackMode = "MANUAL", concurrency = "2") // 设置并发消费者数量为2
     // @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag是一个方法参数注解,用于从消息头中获取投递标签(deliveryTag),
     // 在RabbitMQ中,每条消息都会被分配一个唯一的投递标签，用于标识该消息在通道中的投递状态和顺序。通过使用@Header(AmqpHeaders.DELIVERY_TAG)注解,可以从消息头中提取出该投递标签,并将其赋值给long deliveryTag参数。
     public void receiveMessage(String message, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {

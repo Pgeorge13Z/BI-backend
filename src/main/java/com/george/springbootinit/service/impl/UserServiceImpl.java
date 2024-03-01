@@ -15,7 +15,6 @@ import com.george.springbootinit.model.vo.UserVO;
 import com.george.springbootinit.service.UserService;
 import com.george.springbootinit.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
-import me.chanjar.weixin.common.bean.WxOAuth2UserInfo;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;

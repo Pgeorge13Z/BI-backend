@@ -1,41 +1,35 @@
 package com.george.springbootinit.controller;
 
-import cn.hutool.core.io.FileUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.george.springbootinit.annotation.AuthCheck;
-import com.george.springbootinit.bizmq.BiMessageProducer;
 import com.george.springbootinit.common.BaseResponse;
 import com.george.springbootinit.common.DeleteRequest;
 import com.george.springbootinit.common.ErrorCode;
 import com.george.springbootinit.common.ResultUtils;
 import com.george.springbootinit.constant.CommonConstant;
+import com.george.springbootinit.constant.RedisKeyName;
 import com.george.springbootinit.constant.UserConstant;
 import com.george.springbootinit.exception.BusinessException;
 import com.george.springbootinit.exception.ThrowUtils;
-import com.george.springbootinit.manager.AiManager;
-import com.george.springbootinit.manager.RedisLimiterManager;
 import com.george.springbootinit.model.dto.chart.*;
 import com.george.springbootinit.model.entity.Chart;
 import com.george.springbootinit.model.entity.User;
 import com.george.springbootinit.model.vo.BiResponse;
 import com.george.springbootinit.service.ChartService;
 import com.george.springbootinit.service.UserService;
-import com.george.springbootinit.utils.ExcelUtils;
 import com.george.springbootinit.utils.SqlUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 帖子接口
@@ -52,16 +46,7 @@ public class ChartController {
     private UserService userService;
 
     @Resource
-    private AiManager aiManager;
-
-    @Resource
-    private RedisLimiterManager redisLimiterManager;
-
-    @Resource
-    private ThreadPoolExecutor threadPoolExecutor;
-
-    @Resource
-    private BiMessageProducer biMessageProducer;
+    RedisTemplate<String, Object> redisTemplate;
 
     // region 增删改查
 
@@ -152,24 +137,6 @@ public class ChartController {
         return ResultUtils.success(chart);
     }
 
-    /**
-     * 分页获取列表（封装类）
-     *
-     * @param chartQueryRequest
-     * @param request
-     * @return
-     */
-    @PostMapping("/list/page")
-    public BaseResponse<Page<Chart>> listChartByPage(@RequestBody ChartQueryRequest chartQueryRequest,
-                                                     HttpServletRequest request) {
-        long current = chartQueryRequest.getCurrent();
-        long size = chartQueryRequest.getPageSize();
-        // 限制爬虫
-        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
-                getQueryWrapper(chartQueryRequest));
-        return ResultUtils.success(chartPage);
-    }
 
     /**
      * 分页获取当前用户创建的资源列表
@@ -188,37 +155,35 @@ public class ChartController {
         chartQueryRequest.setUserId(loginUser.getId());
         long current = chartQueryRequest.getCurrent();
         long size = chartQueryRequest.getPageSize();
+        long userId = chartQueryRequest.getUserId();
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
-                getQueryWrapper(chartQueryRequest));
-        return ResultUtils.success(chartPage);
-    }
+
+//        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
+//                getQueryWrapper(chartQueryRequest));
 
 
-    /**
-     * 分页获取当前用户创建的资源列表
-     *
-     * @param chartQueryRequest
-     * @param request
-     * @return
-     */
-    @PostMapping("/my/list/page/vo")
-    public BaseResponse<Page<Chart>> listMyChartVOByPage(@RequestBody ChartQueryRequest chartQueryRequest,
-                                                         HttpServletRequest request) {
-        if (chartQueryRequest == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        ValueOperations<String, Object> valueOperations = redisTemplate.opsForValue();
+        // 设置方法的redisKey
+        String redisKey = String.format(RedisKeyName.List_MyChart + ":%s", userId);
+
+        //如果redis有数据直接取出来
+        Page<Chart> chartPage = (Page<Chart>) valueOperations.get(redisKey);
+        if (chartPage != null) {
+            return ResultUtils.success(chartPage);
         }
-        User loginUser = userService.getLoginUser(request);
-        chartQueryRequest.setUserId(loginUser.getId());
-        long current = chartQueryRequest.getCurrent();
-        long size = chartQueryRequest.getPageSize();
-        // 限制爬虫
-        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
-        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
+        //如果没有数据，从数据库读，并存入redis中
+        chartPage = chartService.page(new Page<>(current, size),
                 getQueryWrapper(chartQueryRequest));
+        //写缓存
+        try {
+            valueOperations.set(redisKey, chartPage, 30000, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            log.error("redis set key error", e);
+        }
         return ResultUtils.success(chartPage);
     }
+
 
     // endregion
 
