@@ -137,9 +137,8 @@ public class ChartController {
         return ResultUtils.success(chart);
     }
 
-
     /**
-     * 分页获取当前用户创建的资源列表
+     * 分页获取当前用户创建的资源列表（Redis)
      *
      * @param chartQueryRequest
      * @param request
@@ -155,26 +154,45 @@ public class ChartController {
         chartQueryRequest.setUserId(loginUser.getId());
         long current = chartQueryRequest.getCurrent();
         long size = chartQueryRequest.getPageSize();
-        long userId = chartQueryRequest.getUserId();
+        // 限制爬虫
+        ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
+        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
+                getQueryWrapper(chartQueryRequest));
+        return ResultUtils.success(chartPage);
+    }
+
+
+
+    @PostMapping("/admin/list/page")
+    public BaseResponse<Page<Chart>> listAdminChartByPage(@RequestBody ChartQueryRequest chartQueryRequest,
+                                                       HttpServletRequest request) {
+        if (chartQueryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+
+        long current = chartQueryRequest.getCurrent();
+        long size = chartQueryRequest.getPageSize();
+
         // 限制爬虫
         ThrowUtils.throwIf(size > 20, ErrorCode.PARAMS_ERROR);
 
-//        Page<Chart> chartPage = chartService.page(new Page<>(current, size),
-//                getQueryWrapper(chartQueryRequest));
-
 
         ValueOperations<String, Object> valueOperations = redisTemplate.opsForValue();
+
         // 设置方法的redisKey
-        String redisKey = String.format(RedisKeyName.List_MyChart + ":%s", userId);
+        String redisKey = String.format(RedisKeyName.PreCacheJob_LOCK + ":%s", UserConstant.ADMIN_ID);
 
         //如果redis有数据直接取出来
         Page<Chart> chartPage = (Page<Chart>) valueOperations.get(redisKey);
         if (chartPage != null) {
             return ResultUtils.success(chartPage);
         }
+
+        QueryWrapper<Chart> chartQueryWrapper = new QueryWrapper<>();
+        chartQueryWrapper.eq("userId",UserConstant.ADMIN_ID);
+
         //如果没有数据，从数据库读，并存入redis中
-        chartPage = chartService.page(new Page<>(current, size),
-                getQueryWrapper(chartQueryRequest));
+        chartPage = chartService.page(new Page<>(current, size), chartQueryWrapper);
         //写缓存
         try {
             valueOperations.set(redisKey, chartPage, 30000, TimeUnit.MINUTES);

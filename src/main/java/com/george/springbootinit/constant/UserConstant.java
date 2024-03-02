@@ -25,10 +25,11 @@ public interface UserConstant {
      */
     String ADMIN_ROLE = "admin";
 
-    /**
-     * 被封号
-     */
-    String BAN_ROLE = "ban";
 
+
+    /**
+     * 管理员ID
+     */
+    Long ADMIN_ID = 9999L;
     // endregion
 }

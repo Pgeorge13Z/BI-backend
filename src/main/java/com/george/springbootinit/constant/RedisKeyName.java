@@ -4,7 +4,12 @@ public interface RedisKeyName {
     /**
      * 死信队列定时任务锁
      */
-    String ReGenChart_LOCK ="bi:preCacheJob:doCache:lock";
+    String ReGenChart_LOCK ="bi:ReGenChart:lock";
+
+    /**
+     * 管理员信息定时任务锁
+     */
+    String PreCacheJob_LOCK ="bi:preCache:doCache:lock";
 
     /**
      * 展示用户的缓存
